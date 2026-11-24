@@ -1,4 +1,3 @@
-
 import sys
 import math
 import subprocess
@@ -74,7 +73,7 @@ def scene_frame(scene, progress, frame):
 
     if scene == 0:
         centered(draw, "UN VIAJE POR", 360, 43)
-        centered(draw, tema.upper()[: thirty := 30], 430, 43, (255,195,90))
+        centered(draw, tema.upper()[:30], 430, 43, (255,195,90))
         centered(draw, "MAPAS • CAMBIOS • HISTORIA", 520, 23, (170,200,215))
         draw.ellipse((220,650,500,930), outline=(80,210,180), width=5)
         draw.arc((220,650,500,930), 0, int(progress*360), fill=(255,190,75), width=12)
