@@ -1,141 +1,166 @@
 
-import os
 import sys
 import math
+import subprocess
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 import imageio_ffmpeg
 
-WIDTH, HEIGHT = 720, 1280
+W, H = 720, 1280
 FPS = 24
-DURATION = 10
+DURATION = 60
+TOTAL = FPS * DURATION
 
-def font(size):
+tema = " ".join(sys.argv[1:]) or "Historia del mundo"
+
+ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
+
+font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+bold_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+
+def font(size, bold=False):
+    path = bold_path if bold else font_path
     try:
-        return ImageFont.truetype(
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-            size
-        )
+        return ImageFont.truetype(path, size)
     except:
         return ImageFont.load_default()
 
-def create_frame(topic, frame):
-    img = Image.new("RGB", (WIDTH, HEIGHT), "#101c32")
-    draw = ImageDraw.Draw(img)
+def centered(draw, text, y, size, color=(255,255,255), bold=True):
+    f = font(size, bold)
+    box = draw.textbbox((0,0), text, font=f)
+    x = (W - (box[2]-box[0])) // 2
+    draw.text((x,y), text, font=f, fill=color)
 
-    # Fondo animado
-    for y in range(HEIGHT):
-        shade = int(18 + 15 * y / HEIGHT)
-        draw.line((0, y, WIDTH, y),
-                  fill=(8, shade, shade + 28))
+def background(draw):
+    draw.rectangle((0,0,W,H), fill=(10,20,38))
+    for x in range(0,W,60):
+        draw.line((x,0,x,H), fill=(22,40,58), width=1)
+    for y in range(0,H,60):
+        draw.line((0,y,W,y), fill=(22,40,58), width=1)
 
-    # Cuadrícula
-    for x in range(0, WIDTH, 60):
-        draw.line((x, 0, x, HEIGHT),
-                  fill="#20334b", width=1)
-
-    # Título
-    draw.text((45, 100), "MAPA HISTÓRICO AI",
-              font=font(30), fill="#43d9ff")
-
-    draw.text((45, 210), topic[:35],
-              font=font(39), fill="white")
-
-    draw.text((45, 280), "HISTORIA • MAPAS • DATOS",
-              font=font(19), fill="#a9c8df")
-
-    # Mapa ilustrativo animado
+def map_shape(draw, progress, scene):
     points = [
-        (120, 510), (180, 440), (250, 470),
-        (290, 550), (250, 620), (180, 610),
-        (130, 560)
+        (105,430),(155,340),(250,315),(310,360),
+        (390,335),(475,390),(535,490),(495,580),
+        (425,625),(350,590),(280,660),(190,600),
+        (130,520)
     ]
+    draw.polygon(points, fill=(28,105,112), outline=(90,220,190))
+    draw.line(points + [points[0]], fill=(90,220,190), width=4)
 
-    offset = int(12 * math.sin(frame / 15))
-    points = [(x, y + offset) for x, y in points]
+    # Rutas animadas ilustrativas
+    route = [(165,470),(245,425),(330,465),(420,430),(490,510)]
+    count = max(1, int(progress * (len(route)-1)))
+    for i in range(count):
+        draw.line((route[i],route[i+1]), fill=(255,190,75), width=6)
+    px = progress * (len(route)-1)
+    idx = min(int(px),len(route)-2)
+    t = px-idx
+    x = int(route[idx][0]*(1-t)+route[idx+1][0]*t)
+    y = int(route[idx][1]*(1-t)+route[idx+1][1]*t)
+    draw.ellipse((x-12,y-12,x+12,y+12), fill=(255,220,100))
 
-    draw.polygon(points, fill="#176b83",
-                 outline="#4ce5ff")
+    for x,y in route:
+        draw.ellipse((x-6,y-6,x+6,y+6), fill=(255,255,255))
 
-    draw.ellipse((360, 440, 580, 660),
-                 outline="#43d9ff", width=4)
+def scene_frame(scene, progress, frame):
+    img = Image.new("RGB",(W,H),(10,20,38))
+    draw = ImageDraw.Draw(img)
+    background(draw)
 
-    draw.arc((385, 440, 555, 660),
-             90, 270, fill="#43d9ff", width=2)
+    # Encabezado
+    draw.rounded_rectangle((35,45,685,125), radius=18, fill=(20,48,65))
+    centered(draw, "HISTORIA EN MOVIMIENTO", 67, 27, (100,230,200))
 
-    draw.arc((385, 440, 555, 660),
-             270, 90, fill="#43d9ff", width=2)
+    if scene == 0:
+        centered(draw, "UN VIAJE POR", 360, 43)
+        centered(draw, tema.upper()[: thirty := 30], 430, 43, (255,195,90))
+        centered(draw, "MAPAS • CAMBIOS • HISTORIA", 520, 23, (170,200,215))
+        draw.ellipse((220,650,500,930), outline=(80,210,180), width=5)
+        draw.arc((220,650,500,930), 0, int(progress*360), fill=(255,190,75), width=12)
 
-    # Barras estadísticas ilustrativas
-    draw.text((45, 760), "ESTADÍSTICAS",
-              font=font(30), fill="white")
+    elif scene == 1:
+        centered(draw, "EL TERRITORIO", 210, 38)
+        map_shape(draw, progress, scene)
+        centered(draw, "MAPA ILUSTRATIVO", 800, 25, (255,195,90))
+        centered(draw, "Rutas y movimientos", 850, 23)
 
-    values = [45, 75, 60, 90]
-    labels = ["DATO 1", "DATO 2", "DATO 3", "DATO 4"]
+    elif scene == 2:
+        centered(draw, "CAMBIOS Y DIMENSIONES", 210, 34)
+        labels = ["Territorio","Comercio","Población","Influencia"]
+        for i,label in enumerate(labels):
+            y = 390 + i*145
+            draw.text((65,y),label,font=font(25,True),fill=(240,245,250))
+            width = int(480 * min(1, max(0, progress*1.25 - i*0.12)))
+            draw.rounded_rectangle((65,y+48,645,y+85),radius=12,fill=(35,55,70))
+            draw.rounded_rectangle((65,y+48,65+width,y+85),radius=12,fill=(60,190,165))
+        centered(draw, "ESQUEMA VISUAL, NO CIFRAS HISTÓRICAS", 1030, 17, (255,195,90))
 
-    for i, value in enumerate(values):
-        y = 840 + i * 85
-        draw.text((45, y), labels[i],
-                  font=font(18), fill="#b8d8ed")
-        draw.rounded_rectangle(
-            (190, y, 630, y + 28),
-            radius=10, fill="#263d55"
-        )
-        width = int(440 * value / 100 *
-                    min(1, frame / 70))
-        draw.rounded_rectangle(
-            (190, y, 190 + width, y + 28),
-            radius=10, fill="#20c9ee"
-        )
+    elif scene == 3:
+        centered(draw, "UNA LÍNEA DEL TIEMPO", 220, 37)
+        y = 610
+        draw.line((85,y,635,y),fill=(80,210,180),width=8)
+        labels = ["INICIO","EXPANSIÓN","CAMBIO","LEGADO"]
+        for i,label in enumerate(labels):
+            x = 100+i*170
+            draw.ellipse((x-15,y-15,x+15,y+15),fill=(255,190,75))
+            draw.text((x-45,y+45),label,font=font(18,True),fill=(255,255,255))
+            if progress > i/4:
+                draw.ellipse((x-23,y-23,x+23,y+23),outline=(255,220,120),width=4)
+        centered(draw, "ETAPAS PRINCIPALES", 850, 25, (170,210,220))
 
-    draw.text((45, 1190), "VIDEO GENERADO",
-              font=font(19), fill="#43d9ff")
+    elif scene == 4:
+        centered(draw, "RUTAS Y CONEXIONES", 210, 38)
+        map_shape(draw, progress, scene)
+        centered(draw, "MOVIMIENTO ILUSTRATIVO", 800, 24, (255,195,90))
+        draw.rounded_rectangle((75,900,645,1010),radius=20,fill=(20,48,65))
+        centered(draw, "Los mapas ayudan a comprender", 925, 22)
+        centered(draw, "cómo se relacionan los lugares", 960, 22)
 
-    return np.array(img)
+    else:
+        centered(draw, "EL LEGADO", 390, 52)
+        centered(draw, tema[:45], 500, 28, (255,195,90))
+        centered(draw, "La historia sigue conectándonos", 620, 25)
+        draw.arc((180,730,540,1090),0,int(progress*360),fill=(80,210,180),width=10)
 
-def main():
-    topic = " ".join(sys.argv[1:]).strip()
+    # Barra de progreso
+    draw.rectangle((35,1175,685,1185),fill=(35,55,70))
+    draw.rectangle((35,1175,35+int(650*frame/TOTAL),1185),fill=(255,190,75))
+    centered(draw, f"ESCENA {scene+1} DE 6", 1200, 19, (170,200,215))
 
-    if not topic:
-        topic = input("Escribe el tema del video: ")
+    return np.asarray(img,dtype=np.uint8)
 
-    print("Preparando video:", topic)
+command = [
+    ffmpeg, "-y",
+    "-f","rawvideo",
+    "-vcodec","rawvideo",
+    "-pix_fmt","rgb24",
+    "-s",f"{W}x{H}",
+    "-r",str(FPS),
+    "-i","-",
+    "-an",
+    "-c:v","libx264",
+    "-pix_fmt","yuv420p",
+    "-movflags","+faststart",
+    "video_generado.mp4"
+]
 
-    output = "video_generado.mp4"
-    ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
+process = subprocess.Popen(command, stdin=subprocess.PIPE)
 
-    import subprocess
-
-    command = [
-        ffmpeg, "-y",
-        "-f", "rawvideo",
-        "-vcodec", "rawvideo",
-        "-s", f"{WIDTH}x{HEIGHT}",
-        "-pix_fmt", "rgb24",
-        "-r", str(FPS),
-        "-i", "-",
-        "-an", "-c:v", "libx264",
-        "-pix_fmt", "yuv420p",
-        output
-    ]
-
-    process = subprocess.Popen(
-        command, stdin=subprocess.PIPE
-    )
-
-    total = FPS * DURATION
-
-    for frame in range(total):
-        image = create_frame(topic, frame)
+try:
+    for frame in range(TOTAL):
+        scene = min(5, frame // (TOTAL//6))
+        progress = (frame % (TOTAL//6)) / (TOTAL//6)
+        image = scene_frame(scene, progress, frame)
         process.stdin.write(image.tobytes())
-        if frame % 24 == 0:
-            print("Generando:", frame * 100 // total, "%")
 
     process.stdin.close()
-    process.wait()
+    result = process.wait()
+    if result != 0:
+        raise RuntimeError("Error al crear el video")
 
-    print("VIDEO TERMINADO:", output)
+    print("VIDEO CREADO: video_generado.mp4")
 
-if __name__ == "__main__":
-    main()
-  
+except Exception:
+    process.kill()
+    raise
